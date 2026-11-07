@@ -1,0 +1,542 @@
+{
+  "name": "Cleaning Lead Capture",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "# 🧹 Cleaning Lead Capture & Qualification",
+        "height": 464,
+        "width": 2352,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -432,
+        -496
+      ],
+      "typeVersion": 1,
+      "id": "03f34c6f-af6d-46db-9250-94965139d4d7",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "0fb2b910-cc17-406e-a300-1bc421b979cd",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.2,
+      "position": [
+        -320,
+        -272
+      ],
+      "id": "97437122-7b39-4ab7-864d-a67821f5f33f",
+      "name": "Receives form data from Tally",
+      "webhookId": "0fb2b910-cc17-406e-a300-1bc421b979cd"
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\n\nconst fields = data?.body?.data?.fields || \n               data?.body?.fields || \n               data?.fields || [];\n\nconst get = (label) => {\n  const field = fields.find(f => f.label === label);\n  if (!field) return \"\";\n  \n  // Handle dropdowns — map ID back to text\n  if (field.options && field.value) {\n    const ids = Array.isArray(field.value) ? field.value : [field.value];\n    const matched = field.options.filter(o => ids.includes(o.id));\n    return matched.map(o => o.text).join(\", \");\n  }\n  \n  return field.value || \"\";\n};\n\nreturn [{\n  json: {\n    name: get(\"Full Name\").trim(),\n    email: get(\"Email Address\").toLowerCase().trim(),\n    phone: get(\"Phone Number\").trim(),\n    zip: get(\"ZIP Code\").trim(),\n    serviceType: get(\"Service Type\"),\n    bedrooms: get(\"Number of Bedrooms\"),\n    bathrooms: get(\"Number of Bathrooms\"),\n    frequency: get(\"Cleaning Frequency\"),\n    preferredDate: get(\"Preferred Date\"),\n    specialInstructions: get(\"Special Instructions\"),\n    submittedAt: new Date().toISOString(),\n    leadSource: \"Website Form\",\n    status: \"NEW\"\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -96,
+        -272
+      ],
+      "id": "7cb60fbf-324a-4338-af95-a8c474212919",
+      "name": "Cleans messy Tally data into readable fields"
+    },
+    {
+      "parameters": {
+        "jsCode": "const lead = $input.first().json;\nconst missing = [];\n\nif (!lead.name) missing.push(\"Name\");\nif (!lead.email || !lead.email.includes(\"@\")) missing.push(\"Email\");\nif (!lead.phone) missing.push(\"Phone\");\nif (!lead.zip || lead.zip.length < 5) missing.push(\"ZIP Code\");\nif (!lead.serviceType) missing.push(\"Service Type\");\nif (!lead.bedrooms) missing.push(\"Bedrooms\");\nif (!lead.bathrooms) missing.push(\"Bathrooms\");\nif (!lead.frequency) missing.push(\"Frequency\");\n\nif (missing.length > 0) {\n  return [{\n    json: {\n      ...lead,\n      status: \"INVALID\",\n      reason: \"Missing fields: \" + missing.join(\", \")\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    ...lead,\n    status: \"VALID\"\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        128,
+        -272
+      ],
+      "id": "f47e253d-30dd-424e-9c91-34f2e3942ee6",
+      "name": "Checks all required fields are filled"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 4
+          },
+          "conditions": [
+            {
+              "id": "5b7a4cfa-41b1-4d20-9966-7ac61ae8b455",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "VALID",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.4,
+      "position": [
+        352,
+        -272
+      ],
+      "id": "1bb93c8a-970f-4d8f-8281-a83fee2c9f8e",
+      "name": "Routes: VALID → continue / INVALID → stop"
+    },
+    {
+      "parameters": {
+        "jsCode": "const lead = $input.first().json;\n\n// Demo supported ZIP codes (Austin, Texas area)\nconst supportedZips = [\n  \"78701\", \"78702\", \"78703\", \"78704\", \"78705\",\n  \"78731\", \"78732\", \"78733\", \"78741\", \"78745\"\n];\n\nconst inServiceArea = supportedZips.includes(lead.zip);\n\nreturn [{\n  json: {\n    ...lead,\n    serviceArea: inServiceArea ? \"SUPPORTED\" : \"UNSUPPORTED\",\n    status: inServiceArea ? \"VALID\" : \"OUT_OF_AREA\"\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        576,
+        -272
+      ],
+      "id": "96a8c514-1c73-448b-94e5-65140ad6cd49",
+      "name": "ZIP Check — is the customer in the service area?"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 4
+          },
+          "conditions": [
+            {
+              "id": "2a9cc49c-2e43-44bf-b990-c18284d7dd53",
+              "leftValue": "={{ $json.serviceArea }}",
+              "rightValue": "SUPPORTED",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.4,
+      "position": [
+        800,
+        -272
+      ],
+      "id": "88998a24-c74b-4748-9c5d-59774cda2e55",
+      "name": "Routes: SUPPORTED → continue / UNSUPPORTED → stop"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1rhKEsxXQIk59CKGdhBQr_35k_6wLXyzfSqRdWlfOUV0",
+          "mode": "list",
+          "cachedResultName": "Cleaning Leads CRM",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1rhKEsxXQIk59CKGdhBQr_35k_6wLXyzfSqRdWlfOUV0/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1rhKEsxXQIk59CKGdhBQr_35k_6wLXyzfSqRdWlfOUV0/edit#gid=0"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "Email",
+              "lookupValue": "={{ $json.email }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1024,
+        -272
+      ],
+      "id": "433bdbfa-29b0-43bf-b4c6-4b3013ed750c",
+      "name": "Duplicate Check — searches Sheets for same email/phone",
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "xKohVo6h94lS3ugI",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 4
+          },
+          "conditions": [
+            {
+              "id": "c983a112-9189-460d-9962-b1496af07629",
+              "leftValue": "={{ $json.Email }}",
+              "rightValue": "",
+              "operator": {
+                "type": "object",
+                "operation": "empty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.4,
+      "position": [
+        1248,
+        -272
+      ],
+      "id": "5a65193e-1d42-405c-b369-2e66a381eb42",
+      "name": "Routes: NEW → continue / DUPLICATE → stop"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1rhKEsxXQIk59CKGdhBQr_35k_6wLXyzfSqRdWlfOUV0",
+          "mode": "list",
+          "cachedResultName": "Cleaning Leads CRM",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1rhKEsxXQIk59CKGdhBQr_35k_6wLXyzfSqRdWlfOUV0/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1rhKEsxXQIk59CKGdhBQr_35k_6wLXyzfSqRdWlfOUV0/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Name": "={{ $('Checks all required fields are filled').item.json.name }}",
+            "Email": "={{ $('Checks all required fields are filled').item.json.email }}",
+            "Phone": "={{ $('Checks all required fields are filled').item.json.phone }}",
+            "ZIP": "={{ $('Checks all required fields are filled').item.json.zip }}",
+            "Service Type": "={{ $('Checks all required fields are filled').item.json.serviceType }}",
+            "Bedrooms": "={{ $('Checks all required fields are filled').item.json.bedrooms }}",
+            "Bathrooms": "={{ $('Checks all required fields are filled').item.json.bathrooms }}",
+            "Frequency": "={{ $('Checks all required fields are filled').item.json.frequency }}",
+            "Preferred Date": "={{ $('Checks all required fields are filled').item.json.preferredDate }}",
+            "Special Instructions": "={{ $('Checks all required fields are filled').item.json.specialInstructions }}",
+            "Service Area": "={{ $('ZIP Check — is the customer in the service area?').item.json.serviceArea }}",
+            "Status": "={{ $('Checks all required fields are filled').item.json.status }}",
+            "Submitted At": "={{ $('Checks all required fields are filled').item.json.submittedAt }}",
+            "Lead Source": "={{ $('Checks all required fields are filled').item.json.leadSource }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Name",
+              "displayName": "Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Email",
+              "displayName": "Email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Phone",
+              "displayName": "Phone",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "ZIP",
+              "displayName": "ZIP",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Service Type",
+              "displayName": "Service Type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Bedrooms",
+              "displayName": "Bedrooms",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Bathrooms",
+              "displayName": "Bathrooms",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Frequency",
+              "displayName": "Frequency",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Preferred Date",
+              "displayName": "Preferred Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Special Instructions",
+              "displayName": "Special Instructions",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Service Area",
+              "displayName": "Service Area",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Submitted At",
+              "displayName": "Submitted At",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Lead Source",
+              "displayName": "Lead Source",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1472,
+        -272
+      ],
+      "id": "89635bb3-5e87-4586-a0d2-bc22f4bcabc6",
+      "name": "Saves the clean lead into Google Sheets CRM",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "xKohVo6h94lS3ugI",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "tirthomoj@gmail.com",
+        "subject": "=🧹 New Lead: {{ $('Checks all required fields are filled').item.json.name }} — {{ $('Checks all required fields are filled').item.json.serviceType }}",
+        "message": "=<h2>New Cleaning Enquiry!</h2>  <p><b>Name:</b> {{ $('Checks all required fields are filled').item.json.name }}</p> <p><b>Email:</b> {{ $('Checks all required fields are filled').item.json.email }}</p> <p><b>Phone:</b> {{ $('Checks all required fields are filled').item.json.phone }}</p> <p><b>ZIP Code:</b> {{ $('Checks all required fields are filled').item.json.zip }}</p>  <hr>  <p><b>Service:</b> {{ $('Checks all required fields are filled').item.json.serviceType }}</p> <p><b>Bedrooms:</b> {{ $('Checks all required fields are filled').item.json.bedrooms }}</p> <p><b>Bathrooms:</b> {{ $('Checks all required fields are filled').item.json.bathrooms }}</p> <p><b>Frequency:</b> {{ $('Checks all required fields are filled').item.json.frequency }}</p> <p><b>Preferred Date:</b> {{ $('Checks all required fields are filled').item.json.preferredDate }}</p>  <hr>  <p><b>Service Area:</b> ✅ SUPPORTED</p> <p><b>Status:</b> NEW LEAD</p> <p><b>Notes:</b> {{ $('Checks all required fields are filled').item.json.specialInstructions }}</p>",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1696,
+        -272
+      ],
+      "id": "0ee53705-9996-4d8f-ade4-fcf7f587f691",
+      "name": "Gmail alert — notifies the owner instantly",
+      "webhookId": "bf8cccb1-19a3-4285-9dc9-95eb2f42d05b",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "iqkC2aAcW2qbjEOW",
+          "name": "Gmail account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Receives form data from Tally": {
+      "main": [
+        [
+          {
+            "node": "Cleans messy Tally data into readable fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cleans messy Tally data into readable fields": {
+      "main": [
+        [
+          {
+            "node": "Checks all required fields are filled",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Checks all required fields are filled": {
+      "main": [
+        [
+          {
+            "node": "Routes: VALID → continue / INVALID → stop",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Routes: VALID → continue / INVALID → stop": {
+      "main": [
+        [
+          {
+            "node": "ZIP Check — is the customer in the service area?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ZIP Check — is the customer in the service area?": {
+      "main": [
+        [
+          {
+            "node": "Routes: SUPPORTED → continue / UNSUPPORTED → stop",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Routes: SUPPORTED → continue / UNSUPPORTED → stop": {
+      "main": [
+        [
+          {
+            "node": "Duplicate Check — searches Sheets for same email/phone",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Duplicate Check — searches Sheets for same email/phone": {
+      "main": [
+        [
+          {
+            "node": "Routes: NEW → continue / DUPLICATE → stop",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Routes: NEW → continue / DUPLICATE → stop": {
+      "main": [
+        [
+          {
+            "node": "Saves the clean lead into Google Sheets CRM",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Saves the clean lead into Google Sheets CRM": {
+      "main": [
+        [
+          {
+            "node": "Gmail alert — notifies the owner instantly",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "877836cb-8e79-415c-b694-8e48054cd0cb",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "0b4c464bd30ffc0e1cfc46638c54d90aae96f20773fc2162ec29ba9f04b7a5c2"
+  },
+  "nodeGroups": [],
+  "id": "ikWLswYU0s6M3tiG",
+  "tags": []
+}
